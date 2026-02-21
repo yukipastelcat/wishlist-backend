@@ -7,16 +7,16 @@ import {
 } from 'typeorm';
 import { Gift } from './gift.entity';
 
-@Entity({ name: 'gift_claims' })
-export class GiftClaim {
+@Entity({ name: 'gift_reservations' })
+export class GiftReservation {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
   @Column('uuid')
   giftId!: string;
 
-  @ManyToOne(() => Gift, (gift) => gift.claims, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'gift_id' })
+  @ManyToOne(() => Gift, (gift) => gift.reservations, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'giftId' })
   gift!: Gift;
 
   @Column()

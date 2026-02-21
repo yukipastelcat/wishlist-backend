@@ -7,7 +7,7 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { GiftClaim } from './gift-claim.entity';
+import { GiftReservation } from './gift-reservation.entity';
 import { Tag } from './tag.entity';
 
 @Entity({ name: 'gifts' })
@@ -27,6 +27,9 @@ export class Gift {
   @Column({ nullable: true })
   imageUrl?: string;
 
+  @Column({ nullable: true })
+  link?: string;
+
   @Column({ type: 'double precision', nullable: true })
   priceAmount?: number | null;
 
@@ -44,10 +47,10 @@ export class Gift {
   @Column({ default: true })
   claimable!: boolean;
 
-  // Stores the id of the active GiftClaim, if any
+  // Stores the id of the active GiftReservation, if any
   @Column({ type: 'uuid', nullable: true })
-  claimId?: string | null;
+  reservationId?: string | null;
 
-  @OneToMany(() => GiftClaim, (claim: GiftClaim) => claim.gift)
-  claims!: GiftClaim[];
+  @OneToMany(() => GiftReservation, (reservation: GiftReservation) => reservation.gift)
+  reservations!: GiftReservation[];
 }

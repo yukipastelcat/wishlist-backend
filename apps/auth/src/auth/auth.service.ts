@@ -23,11 +23,11 @@ export class AuthService {
   );
 
   private readonly accessExpiry = parseInt(
-    process.env.JWT_ACCESS_EXPIRY ?? '900',
+    process.env.JWT_ACCESS_EXPIRY ?? '900000',
     10,
   );
   private readonly refreshExpiry = parseInt(
-    process.env.JWT_REFRESH_EXPIRY ?? '604800',
+    process.env.JWT_REFRESH_EXPIRY ?? '604800000',
     10,
   );
 
@@ -38,7 +38,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     @InjectRepository(RefreshToken)
     private readonly refreshTokenRepo: Repository<RefreshToken>,
-  ) {}
+  ) { }
 
   generateCode(): string {
     return Math.floor(100000 + Math.random() * 900000).toString();
@@ -97,6 +97,8 @@ export class AuthService {
       expiresIn: this.refreshExpiry,
     });
 
+    this.logger.log('Tokens signed, expiring in' + this.accessExpiry + 's (access) and ' + this.refreshExpiry + 's (refresh)');
+
     const hashed = await bcrypt.hash(refreshToken, 10);
     await this.refreshTokenRepo.save({
       email,
@@ -150,8 +152,9 @@ export class AuthService {
       await this.deleteToken(payload.jti);
 
       return this.issueTokens(payload.sub);
-    } catch {
-      this.logger.warn('Refresh token exchange failed');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown';
+      this.logger.warn('Refresh token exchange failed, reason: ' + message);
       throw new UnauthorizedException();
     }
   }
@@ -217,12 +220,17 @@ export class AuthService {
   }
 
   private getPermissionsForEmail(email: string): Permission[] | undefined {
-    if (!this.ownerEmail) return undefined;
-    if (email.trim().toLowerCase() !== this.ownerEmail) return undefined;
+    if (email.trim().toLowerCase() === this.ownerEmail) {
+      return [
+        { resource: 'gift', scopes: ['view', 'create', 'edit', 'delete'] },
+        { resource: 'tag', scopes: ['create', 'edit', 'delete'] },
+      ];
+    }
 
     return [
-      { resource: 'gift', scopes: ['view', 'create', 'edit', 'delete'] },
-      { resource: 'tag', scopes: ['create', 'edit', 'delete'] },
+      { resource: 'gift', scopes: ['view'] },
+      { resource: 'tag', scopes: ['view'] },
+      { resource: 'gift-reservation', scopes: ['create', 'view', 'delete'] },
     ];
   }
 }

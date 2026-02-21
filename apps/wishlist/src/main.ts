@@ -5,9 +5,15 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const feOrigin = process.env.FE_ORIGIN?.trim();
+  const feDomain = process.env.FE_DOMAIN?.trim();
+  const inferredOrigin = feDomain ? `https://${feDomain}` : undefined;
+  const allowedOrigins = [feOrigin, inferredOrigin].filter(
+    (value): value is string => Boolean(value),
+  );
 
   app.enableCors({
-    origin: `http://${process.env.FE_DOMAIN}`,
+    origin: allowedOrigins,
     credentials: true,
   });
 

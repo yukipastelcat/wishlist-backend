@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import type { Request, Response } from 'express';
+import type { CookieOptions } from 'express';
 
 class RequestCodeDto {
   email!: string;
@@ -27,6 +28,17 @@ export class AuthController {
   private readonly logger = new Logger(AuthController.name);
 
   constructor(private readonly authService: AuthService) { }
+
+  private getRefreshCookieOptions(): CookieOptions {
+    const isProd = process.env.NODE_ENV === 'production';
+    return {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? 'strict' : 'lax',
+      path: '/auth/refresh',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    };
+  }
 
   @Post('request-code')
   requestCode(@Body() body: RequestCodeDto) {
@@ -47,13 +59,7 @@ export class AuthController {
       body.email,
     );
 
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/auth/refresh',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    res.cookie('refreshToken', refreshToken, this.getRefreshCookieOptions());
 
     return { accessToken };
   }
@@ -70,17 +76,12 @@ export class AuthController {
         refreshTokenFromCookies,
       );
 
-      res.cookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        path: '/auth/refresh',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+      res.cookie('refreshToken', refreshToken, this.getRefreshCookieOptions());
 
       return { accessToken };
-    } catch {
-      this.logger.warn('Token refresh failed');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      this.logger.warn('Token refresh failed, reason:' + message);
       throw new UnauthorizedException('Invalid refresh token');
     }
   }

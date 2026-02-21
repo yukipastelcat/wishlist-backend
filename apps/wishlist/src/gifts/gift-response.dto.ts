@@ -1,5 +1,3 @@
-import { GiftClaim } from './gift-claim.entity';
-
 export type GiftPriceDto = {
   amount: number;
   currency: string;
@@ -18,9 +16,22 @@ export type GiftResponseDto = {
   title: string;
   description?: string;
   imageUrl?: string;
+  link?: string;
   claimable: boolean;
-  claimId?: string | null;
+  isReserved?: boolean;
+  isReservedByMe?: boolean;
   tags?: TagResponseDto[];
-  claims?: GiftClaim[];
+  price: GiftPriceDto | null;
+};
+
+export type GiftEditResponseDto = {
+  id: string;
+  createdAt: Date;
+  titleLocalized: Record<string, string>;
+  descriptionLocalized?: Record<string, string>;
+  imageUrl?: string;
+  link?: string;
+  claimable: boolean;
+  tagIds: string[];
   price: GiftPriceDto | null;
 };

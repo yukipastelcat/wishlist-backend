@@ -5,7 +5,7 @@ import { TagsModule } from './tags/tags.module';
 import { CurrencyModule } from './currency/currency.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Gift } from './gifts/gift.entity';
-import { GiftClaim } from './gifts/gift-claim.entity';
+import { GiftReservation } from './gifts/gift-reservation.entity';
 import { Tag } from './gifts/tag.entity';
 
 @Module({
@@ -18,7 +18,7 @@ import { Tag } from './gifts/tag.entity';
       username: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
       database: process.env.DB_NAME,
-      entities: [Gift, GiftClaim, Tag],
+      entities: [Gift, GiftReservation, Tag],
       synchronize: true,
     }),
     GiftsModule,
