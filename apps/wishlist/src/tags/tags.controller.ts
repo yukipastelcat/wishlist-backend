@@ -39,7 +39,10 @@ export class TagsController {
     @Headers('x-locale') localeHeader?: string,
     @Headers('accept-language') acceptLanguage?: string,
   ) {
-    return this.tagsService.create(data, resolveRequestLocale(localeHeader, acceptLanguage));
+    return this.tagsService.create(
+      data,
+      resolveRequestLocale(localeHeader, acceptLanguage),
+    );
   }
 
   @Patch(':id')
@@ -66,6 +69,9 @@ export class TagsController {
     @Headers('x-locale') localeHeader?: string,
     @Headers('accept-language') acceptLanguage?: string,
   ) {
-    return this.tagsService.remove(id, resolveRequestLocale(localeHeader, acceptLanguage));
+    return this.tagsService.remove(
+      id,
+      resolveRequestLocale(localeHeader, acceptLanguage),
+    );
   }
 }

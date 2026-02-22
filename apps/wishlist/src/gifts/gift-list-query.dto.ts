@@ -7,4 +7,3 @@ export class GiftListQueryDto extends CursorPaginationDto {
   // Reserved for upcoming tags multiselect support.
   tagIds?: string | string[];
 }
-

@@ -64,19 +64,26 @@ export class CurrencyService implements OnModuleInit {
     }
 
     if (!this.initialized) {
-      throw new ServiceUnavailableException('Currency rates are not initialized');
+      throw new ServiceUnavailableException(
+        'Currency rates are not initialized',
+      );
     }
 
     const fromRate =
       normalizedFrom === this.baseCurrency ? 1 : this.rates.get(normalizedFrom);
-    const toRate = normalizedTo === this.baseCurrency ? 1 : this.rates.get(normalizedTo);
+    const toRate =
+      normalizedTo === this.baseCurrency ? 1 : this.rates.get(normalizedTo);
 
     if (!fromRate) {
-      throw new BadRequestException(`Missing exchange rate for ${normalizedFrom}`);
+      throw new BadRequestException(
+        `Missing exchange rate for ${normalizedFrom}`,
+      );
     }
 
     if (!toRate) {
-      throw new BadRequestException(`Missing exchange rate for ${normalizedTo}`);
+      throw new BadRequestException(
+        `Missing exchange rate for ${normalizedTo}`,
+      );
     }
 
     const converted = this.convertViaBase(amount, fromRate, toRate);
@@ -109,7 +116,11 @@ export class CurrencyService implements OnModuleInit {
     }
   }
 
-  private convertViaBase(amount: number, fromRate: number, toRate: number): number {
+  private convertViaBase(
+    amount: number,
+    fromRate: number,
+    toRate: number,
+  ): number {
     const SCALE = 1_000_000_000_000n;
 
     const toScaledInt = (value: number) => {

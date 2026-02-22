@@ -9,7 +9,11 @@ import { Tag } from './tag.entity';
 import { CurrencyModule } from '../currency/currency.module';
 
 @Module({
-  imports: [AuthzModule, CurrencyModule, TypeOrmModule.forFeature([Gift, GiftReservation, Tag])],
+  imports: [
+    AuthzModule,
+    CurrencyModule,
+    TypeOrmModule.forFeature([Gift, GiftReservation, Tag]),
+  ],
   controllers: [GiftsController],
   providers: [GiftsService],
 })

@@ -2,7 +2,9 @@ import { BadRequestException } from '@nestjs/common';
 
 export type LocalizedTextMap = Record<string, string>;
 
-export function resolveRequestLocale(...candidates: Array<string | undefined>): string | undefined {
+export function resolveRequestLocale(
+  ...candidates: Array<string | undefined>
+): string | undefined {
   for (const candidate of candidates) {
     if (!candidate) continue;
     const firstPart = candidate.split(',')[0]?.split(';')[0]?.trim();
@@ -20,7 +22,9 @@ export function parseLocalizedTextMap(
   if (value == null) return undefined;
 
   if (typeof value !== 'object' || Array.isArray(value)) {
-    throw new BadRequestException(`${fieldName} must be an object map of locale to string`);
+    throw new BadRequestException(
+      `${fieldName} must be an object map of locale to string`,
+    );
   }
 
   const result: LocalizedTextMap = {};
@@ -30,7 +34,9 @@ export function parseLocalizedTextMap(
     const locale = normalizeLocale(rawLocale);
 
     if (!isLocaleKey(locale)) {
-      throw new BadRequestException(`${fieldName} contains invalid locale key: ${rawLocale}`);
+      throw new BadRequestException(
+        `${fieldName} contains invalid locale key: ${rawLocale}`,
+      );
     }
 
     if (typeof rawText !== 'string') {
@@ -39,7 +45,9 @@ export function parseLocalizedTextMap(
 
     const text = rawText.trim();
     if (!text) {
-      throw new BadRequestException(`${fieldName} values must be non-empty strings`);
+      throw new BadRequestException(
+        `${fieldName} values must be non-empty strings`,
+      );
     }
 
     result[locale] = text;

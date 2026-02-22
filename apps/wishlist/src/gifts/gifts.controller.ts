@@ -11,7 +11,12 @@ import {
   Query,
   Headers,
 } from '@nestjs/common';
-import { JwtAuthGuard, OptionalJwtAuthGuard, Permissions, PermissionsGuard } from '@app/auth';
+import {
+  JwtAuthGuard,
+  OptionalJwtAuthGuard,
+  Permissions,
+  PermissionsGuard,
+} from '@app/auth';
 import { GiftsService } from './gifts.service';
 import type { Request } from 'express';
 import { TokenPayload } from '@app/common/token-payload.type';

@@ -51,6 +51,9 @@ export class Gift {
   @Column({ type: 'uuid', nullable: true })
   reservationId?: string | null;
 
-  @OneToMany(() => GiftReservation, (reservation: GiftReservation) => reservation.gift)
+  @OneToMany(
+    () => GiftReservation,
+    (reservation: GiftReservation) => reservation.gift,
+  )
   reservations!: GiftReservation[];
 }

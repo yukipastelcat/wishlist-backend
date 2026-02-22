@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   applyCursorPagination,
   CursorPaginatedResponse,
@@ -7,7 +12,10 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Tag } from '../gifts/tag.entity';
-import { parseLocalizedTextMap, resolveLocalizedText } from '../localization.util';
+import {
+  parseLocalizedTextMap,
+  resolveLocalizedText,
+} from '../localization.util';
 import { TagResponseDto } from './tag-response.dto';
 
 type TagWriteInput = {
@@ -19,7 +27,9 @@ type TagWriteInput = {
 export class TagsService {
   private readonly logger = new Logger(TagsService.name);
 
-  constructor(@InjectRepository(Tag) private readonly tagRepo: Repository<Tag>) {}
+  constructor(
+    @InjectRepository(Tag) private readonly tagRepo: Repository<Tag>,
+  ) {}
 
   async findAll(
     pagination: CursorPaginationDto,
@@ -96,7 +106,8 @@ export class TagsService {
   }
 
   private toTagResponse(tag: Tag, locale?: string): TagResponseDto {
-    const title = resolveLocalizedText(tag.titleLocalized, locale) ?? 'Untitled';
+    const title =
+      resolveLocalizedText(tag.titleLocalized, locale) ?? 'Untitled';
     return {
       id: tag.id,
       createdAt: tag.createdAt,
@@ -110,7 +121,9 @@ export class TagsService {
     fieldName: string,
   ): asserts value is Record<string, string> {
     if (!value || Object.keys(value).length === 0) {
-      throw new BadRequestException(`${fieldName} must include at least one locale entry`);
+      throw new BadRequestException(
+        `${fieldName} must include at least one locale entry`,
+      );
     }
   }
 }

@@ -9,7 +9,8 @@ export type RatesSnapshot = {
 export class CurrencyRatesProvider {
   async fetchRates(baseCurrency: string): Promise<RatesSnapshot> {
     const urlTemplate =
-      process.env.CURRENCY_RATES_URL ?? 'https://open.er-api.com/v6/latest/{base}';
+      process.env.CURRENCY_RATES_URL ??
+      'https://open.er-api.com/v6/latest/{base}';
     const url = urlTemplate.includes('{base}')
       ? urlTemplate.replace('{base}', baseCurrency)
       : `${urlTemplate.replace(/\/$/, '')}/${baseCurrency}`;

@@ -57,7 +57,8 @@ export class GiftsService {
 
   constructor(
     @InjectRepository(Gift) private giftRepo: Repository<Gift>,
-    @InjectRepository(GiftReservation) private reservationRepo: Repository<GiftReservation>,
+    @InjectRepository(GiftReservation)
+    private reservationRepo: Repository<GiftReservation>,
     @InjectRepository(Tag) private tagRepo: Repository<Tag>,
     private readonly currencyService: CurrencyService,
   ) {}
@@ -94,9 +95,13 @@ export class GiftsService {
       };
     }
 
-    const orderedGifts = await this.hydrateGiftsInOrder(paged.data.map((gift) => gift.id));
+    const orderedGifts = await this.hydrateGiftsInOrder(
+      paged.data.map((gift) => gift.id),
+    );
 
-    this.logger.debug(`Gift list completed with ${orderedGifts.length} results`);
+    this.logger.debug(
+      `Gift list completed with ${orderedGifts.length} results`,
+    );
     return {
       data: orderedGifts.map((gift) => this.toGiftResponse(gift, context)),
       meta: paged.meta,
@@ -130,7 +135,10 @@ export class GiftsService {
     };
   }
 
-  async create(data: GiftWriteInput, context: GiftContext): Promise<GiftResponseDto> {
+  async create(
+    data: GiftWriteInput,
+    context: GiftContext,
+  ): Promise<GiftResponseDto> {
     const {
       title: _unusedTitle,
       description: _unusedDescription,
@@ -142,7 +150,10 @@ export class GiftsService {
       price,
       claimable,
     } = data;
-    const parsedTitleLocalized = parseLocalizedTextMap(titleLocalized, 'titleLocalized');
+    const parsedTitleLocalized = parseLocalizedTextMap(
+      titleLocalized,
+      'titleLocalized',
+    );
     this.ensureNonEmptyLocalizedField(parsedTitleLocalized, 'titleLocalized');
 
     const parsedDescriptionLocalized = parseLocalizedTextMap(
@@ -244,7 +255,11 @@ export class GiftsService {
     return this.toGiftResponse(gift, context);
   }
 
-  async reserve(giftId: string, userEmail: string, context: GiftContext): Promise<GiftResponseDto> {
+  async reserve(
+    giftId: string,
+    userEmail: string,
+    context: GiftContext,
+  ): Promise<GiftResponseDto> {
     this.logger.debug(`Creating gift reservation (giftId=${giftId})`);
     const gift = await this.giftRepo.findOne({
       where: { id: giftId },
@@ -252,7 +267,8 @@ export class GiftsService {
     });
     if (!gift) throw new NotFoundException('Gift not found');
     if (!gift.claimable) throw new ForbiddenException('Gift not claimable');
-    if (gift.reservationId) throw new ForbiddenException('Gift already reserved');
+    if (gift.reservationId)
+      throw new ForbiddenException('Gift already reserved');
 
     const insertResult = await this.reservationRepo.insert({
       giftId: gift.id,
@@ -264,11 +280,16 @@ export class GiftsService {
       throw new BadRequestException('Failed to create reservation');
     }
 
-    const savedReservation = await this.reservationRepo.findOneBy({ id: insertedId });
+    const savedReservation = await this.reservationRepo.findOneBy({
+      id: insertedId,
+    });
     if (!savedReservation) {
       throw new BadRequestException('Failed to load created reservation');
     }
-    await this.giftRepo.update({ id: gift.id }, { reservationId: savedReservation.id });
+    await this.giftRepo.update(
+      { id: gift.id },
+      { reservationId: savedReservation.id },
+    );
     this.logger.log(
       `Gift reserved (giftId=${giftId}, reservationId=${savedReservation.id})`,
     );
@@ -293,7 +314,8 @@ export class GiftsService {
     const reservation = await this.reservationRepo.findOne({
       where: { id: gift.reservationId, userEmail },
     });
-    if (!reservation) throw new ForbiddenException('Cannot unreserve: not owner');
+    if (!reservation)
+      throw new ForbiddenException('Cannot unreserve: not owner');
 
     await this.reservationRepo.remove(reservation);
     await this.giftRepo.update({ id: gift.id }, { reservationId: null });
@@ -310,8 +332,7 @@ export class GiftsService {
       id: gift.id,
       createdAt: gift.createdAt,
       title:
-        resolveLocalizedText(gift.titleLocalized, context.locale) ??
-        'Untitled',
+        resolveLocalizedText(gift.titleLocalized, context.locale) ?? 'Untitled',
       description: resolveLocalizedText(
         gift.descriptionLocalized,
         context.locale,
@@ -325,7 +346,10 @@ export class GiftsService {
     };
   }
 
-  private toPriceDto(gift: Gift, context: GiftContext): GiftResponseDto['price'] {
+  private toPriceDto(
+    gift: Gift,
+    context: GiftContext,
+  ): GiftResponseDto['price'] {
     if (gift.priceAmount == null || !gift.priceCurrency) {
       return null;
     }
@@ -389,18 +413,21 @@ export class GiftsService {
   private toReservationFlags(
     gift: Gift,
     context: GiftContext,
-  ): Pick<GiftResponseDto, 'isReserved' | 'isReservedByMe'> | Record<string, never> {
+  ):
+    | Pick<GiftResponseDto, 'isReserved' | 'isReservedByMe'>
+    | Record<string, never> {
     if (!context.requesterEmail || context.isAdmin) {
       return {};
     }
 
     const isReserved = Boolean(gift.reservationId);
     const requesterEmail = context.requesterEmail.trim().toLowerCase();
-    const isReservedByMe = gift.reservations?.some(
-      (reservation) =>
-        reservation.id === gift.reservationId &&
-        reservation.userEmail.trim().toLowerCase() === requesterEmail,
-    ) ?? false;
+    const isReservedByMe =
+      gift.reservations?.some(
+        (reservation) =>
+          reservation.id === gift.reservationId &&
+          reservation.userEmail.trim().toLowerCase() === requesterEmail,
+      ) ?? false;
 
     return {
       isReserved,
@@ -444,7 +471,9 @@ export class GiftsService {
     fieldName: string,
   ): asserts value is Record<string, string> {
     if (!value || Object.keys(value).length === 0) {
-      throw new BadRequestException(`${fieldName} must include at least one locale entry`);
+      throw new BadRequestException(
+        `${fieldName} must include at least one locale entry`,
+      );
     }
   }
 
@@ -483,15 +512,16 @@ export class GiftsService {
     fieldName: string,
   ): number | undefined {
     if (value == null || value === '') return undefined;
-    const parsed =
-      typeof value === 'number' ? value : Number.parseFloat(value);
+    const parsed = typeof value === 'number' ? value : Number.parseFloat(value);
 
     if (!Number.isFinite(parsed)) {
       throw new BadRequestException(`${fieldName} must be a finite number`);
     }
 
     if (parsed < 0) {
-      throw new BadRequestException(`${fieldName} must be greater than or equal to 0`);
+      throw new BadRequestException(
+        `${fieldName} must be greater than or equal to 0`,
+      );
     }
 
     return parsed;
@@ -537,7 +567,9 @@ export class GiftsService {
         break;
       }
 
-      const hydratedChunk = await this.hydrateGiftsInOrder(paged.data.map((gift) => gift.id));
+      const hydratedChunk = await this.hydrateGiftsInOrder(
+        paged.data.map((gift) => gift.id),
+      );
       for (const gift of hydratedChunk) {
         if (this.matchesLocalizedPriceRange(gift, context, filters)) {
           matched.push(gift);

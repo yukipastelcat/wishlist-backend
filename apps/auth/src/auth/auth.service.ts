@@ -1,4 +1,12 @@
-import { Injectable, UnauthorizedException, Logger, NotFoundException, HttpException } from '@nestjs/common';
+import {
+  HttpException,
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -8,11 +16,15 @@ import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { TokenPayload } from '@app/common/token-payload.type';
 import { Permission } from '@app/common/permission.type';
+import { EMAIL_SERVICE } from './email/email.service';
+import type { EmailService } from './email/email.service';
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  private readonly ownerEmail = (process.env.OWNER_EMAIL ?? '').trim().toLowerCase();
+  private readonly ownerEmail = (process.env.OWNER_EMAIL ?? '')
+    .trim()
+    .toLowerCase();
   private readonly privateKey = fs.readFileSync(
     process.env.JWT_PRIVATE_KEY_PATH ?? './keys/private.pem',
     'utf-8',
@@ -38,18 +50,39 @@ export class AuthService {
     private readonly jwtService: JwtService,
     @InjectRepository(RefreshToken)
     private readonly refreshTokenRepo: Repository<RefreshToken>,
-  ) { }
+    @Inject(EMAIL_SERVICE)
+    private readonly emailService: EmailService,
+  ) {}
 
   generateCode(): string {
     return Math.floor(100000 + Math.random() * 900000).toString();
   }
 
-  requestCode(email: string) {
+  async requestCode(email: string): Promise<void> {
     const code = this.generateCode();
     const expiresAt = new Date(Date.now() + this.CODE_EXPIRATION_MS);
     this.codes.set(email, { code, expiresAt });
 
-    this.logger.log(`Code for ${email}: ${code}`);
+    if (process.env.NODE_ENV === 'development') {
+      this.logger.debug(`Generated verification code for ${email}: ${code}`);
+      return;
+    }
+
+    try {
+      await this.emailService.sendEmail({
+        to: email,
+        body: `Your verification code is: ${code}`,
+        subject: 'Your verification code',
+      });
+      this.logger.log(`Verification code generated and sent to ${email}`);
+    } catch (error: unknown) {
+      this.codes.delete(email);
+      const message = error instanceof Error ? error.message : 'Unknown reason';
+      this.logger.error(`Failed to send verification code email: ${message}`);
+      throw new InternalServerErrorException(
+        'Unable to send verification code',
+      );
+    }
   }
 
   verifyCode(email: string, code: string) {
@@ -97,7 +130,13 @@ export class AuthService {
       expiresIn: this.refreshExpiry,
     });
 
-    this.logger.log('Tokens signed, expiring in' + this.accessExpiry + 's (access) and ' + this.refreshExpiry + 's (refresh)');
+    this.logger.log(
+      'Tokens signed, expiring in' +
+        this.accessExpiry +
+        's (access) and ' +
+        this.refreshExpiry +
+        's (refresh)',
+    );
 
     const hashed = await bcrypt.hash(refreshToken, 10);
     await this.refreshTokenRepo.save({

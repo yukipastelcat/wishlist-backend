@@ -19,15 +19,12 @@ class VerifyCodeDto {
   email!: string;
   code!: string;
 }
-class RefreshTokenDto {
-  refreshToken!: string;
-}
 
 @Controller('auth')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
 
-  constructor(private readonly authService: AuthService) { }
+  constructor(private readonly authService: AuthService) {}
 
   private getRefreshCookieOptions(): CookieOptions {
     const isProd = process.env.NODE_ENV === 'production';
@@ -41,9 +38,9 @@ export class AuthController {
   }
 
   @Post('request-code')
-  requestCode(@Body() body: RequestCodeDto) {
+  async requestCode(@Body() body: RequestCodeDto) {
     this.logger.log('Handling auth code request');
-    this.authService.requestCode(body.email);
+    await this.authService.requestCode(body.email);
     return { status: 'ok' };
   }
 
