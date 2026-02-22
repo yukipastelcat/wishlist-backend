@@ -3,9 +3,6 @@ services:
     build:
       context: .
       dockerfile: ./apps/wishlist/docker/Dockerfile
-    volumes:
-      - /etc/wishlist/keys:/etc/wishlist/keys
-      - /etc/wishlist/certs:/etc/wishlist/certs
     environment:
       DB_PASSWORD_FILE: ${POSTGRES_PASSWORD_FILE}
 
@@ -14,15 +11,12 @@ services:
       context: .
       dockerfile: ./apps/auth/docker/Dockerfile
     restart: unless-stopped
-    volumes:
-      - /etc/wishlist/keys:/etc/wishlist/keys
-      - /etc/wishlist/certs:/etc/wishlist/certs
     environment:
       DB_HOST: db
       DB_PORT: 5432
       DB_NAME: ${POSTGRES_DB}
       DB_USER: ${POSTGRES_USER}
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-}
       DB_PASSWORD_FILE: ${POSTGRES_PASSWORD_FILE}
     networks:
       - app_network

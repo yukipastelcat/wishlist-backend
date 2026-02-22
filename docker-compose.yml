@@ -14,7 +14,8 @@ services:
       DB_PORT: 5432
       DB_NAME: ${POSTGRES_DB}
       DB_USER: ${POSTGRES_USER}
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-}
+      DB_PASSWORD_FILE: ${POSTGRES_PASSWORD_FILE:-}
 
 volumes:
   postgres_data:

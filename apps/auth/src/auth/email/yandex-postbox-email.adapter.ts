@@ -4,18 +4,21 @@ import {
   Logger,
 } from '@nestjs/common';
 import { createHash, createHmac } from 'crypto';
+import * as fs from 'fs';
 import type { EmailService, SendEmailInput } from './email.service';
 
 @Injectable()
 export class YandexPostboxEmailAdapter implements EmailService {
   private readonly logger = new Logger(YandexPostboxEmailAdapter.name);
-  private readonly accessKeyId = (
-    process.env.POSTBOX_ACCESS_KEY_ID ?? ''
-  ).trim();
-  private readonly secretAccessKey = (
-    process.env.POSTBOX_SECRET_ACCESS_KEY ?? ''
-  ).trim();
-  private readonly fromAddress = (process.env.POSTBOX_FROM_EMAIL ?? '').trim();
+  private readonly accessKeyId = this.readConfigValue(
+    'YA_POSTBOX_ACCESS_KEY_ID',
+    'YA_POSTBOX_ACCESS_KEY_ID_FILE',
+  );
+  private readonly secretAccessKey = this.readConfigValue(
+    'YA_POSTBOX_SECRET_ACCESS_KEY',
+    'YA_POSTBOX_SECRET_ACCESS_KEY_FILE',
+  );
+  private readonly fromAddress = this.readConfigValue('YA_POSTBOX_FROM_EMAIL');
   private readonly endpoint = (
     process.env.POSTBOX_ENDPOINT ?? 'https://postbox.cloud.yandex.net'
   ).replace(/\/$/, '');
@@ -130,5 +133,21 @@ export class YandexPostboxEmailAdapter implements EmailService {
 
   private formatAmzDate(date: Date): string {
     return date.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  }
+
+  private readConfigValue(valueKey: string, fileKey?: string): string {
+    const filePath = fileKey ? (process.env[fileKey] ?? '').trim() : '';
+    if (filePath) {
+      try {
+        return fs.readFileSync(filePath, 'utf-8').trim();
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        this.logger.warn(
+          `Failed to read ${fileKey} at "${filePath}": ${message}`,
+        );
+      }
+    }
+
+    return (process.env[valueKey] ?? '').trim();
   }
 }

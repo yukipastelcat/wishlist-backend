@@ -7,6 +7,20 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Gift } from './gifts/gift.entity';
 import { GiftReservation } from './gifts/gift-reservation.entity';
 import { Tag } from './gifts/tag.entity';
+import * as fs from 'fs';
+
+function resolveDbPassword(): string | undefined {
+  const passwordFile = (process.env.DB_PASSWORD_FILE ?? '').trim();
+  if (passwordFile) {
+    try {
+      return fs.readFileSync(passwordFile, 'utf-8').trim();
+    } catch {
+      // Fallback to DB_PASSWORD when file is unavailable.
+    }
+  }
+
+  return (process.env.DB_PASSWORD ?? '').trim() || undefined;
+}
 
 @Module({
   imports: [
@@ -16,7 +30,7 @@ import { Tag } from './gifts/tag.entity';
       host: process.env.DB_HOST,
       port: parseInt(process.env.DB_PORT ?? '5432', 10),
       username: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
+      password: resolveDbPassword(),
       database: process.env.DB_NAME,
       entities: [Gift, GiftReservation, Tag],
       synchronize: true,
