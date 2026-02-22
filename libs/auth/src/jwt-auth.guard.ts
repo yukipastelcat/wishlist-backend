@@ -12,7 +12,7 @@ import { Request } from 'express';
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   private readonly publicKey = fs.readFileSync(
-    process.env.JWT_PUBLIC_KEY_PATH ?? './keys/public_rsa.pem',
+    process.env.JWT_PUBLIC_KEY_PATH ?? '/etc/wishlist/certs/public.pem',
     'utf-8',
   );
 

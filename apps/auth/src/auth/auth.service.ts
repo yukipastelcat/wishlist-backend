@@ -26,11 +26,11 @@ export class AuthService {
     .trim()
     .toLowerCase();
   private readonly privateKey = fs.readFileSync(
-    process.env.JWT_PRIVATE_KEY_PATH ?? './keys/private.pem',
+    process.env.JWT_PRIVATE_KEY_PATH ?? '/etc/wishlist/keys/private.pem',
     'utf-8',
   );
   private readonly publicKey = fs.readFileSync(
-    process.env.JWT_PUBLIC_KEY_PATH ?? './keys/public.pem',
+    process.env.JWT_PUBLIC_KEY_PATH ?? '/etc/wishlist/certs/public.pem',
     'utf-8',
   );
 
