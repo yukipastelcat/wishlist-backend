@@ -2,7 +2,8 @@ FROM node:lts-alpine3.22
 
 # Install build dependencies
 RUN apk add --no-cache \
-    git
+    git \
+    openssl
 
 # Install NestJS CLI globally
 RUN npm install -g @nestjs/cli
