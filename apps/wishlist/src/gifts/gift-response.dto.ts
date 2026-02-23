@@ -1,3 +1,5 @@
+import { EditorJsDocument } from './editor-content.util';
+
 export type GiftPriceDto = {
   amount: number;
   currency: string;
@@ -14,7 +16,7 @@ export type GiftResponseDto = {
   id: string;
   createdAt: Date;
   title: string;
-  description?: string;
+  description?: EditorJsDocument;
   imageUrl?: string;
   link?: string;
   claimable: boolean;
@@ -28,7 +30,7 @@ export type GiftEditResponseDto = {
   id: string;
   createdAt: Date;
   titleLocalized: Record<string, string>;
-  descriptionLocalized?: Record<string, string>;
+  descriptionLocalized?: Record<string, EditorJsDocument>;
   imageUrl?: string;
   link?: string;
   claimable: boolean;

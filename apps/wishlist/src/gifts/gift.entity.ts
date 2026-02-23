@@ -22,7 +22,7 @@ export class Gift {
   titleLocalized?: Record<string, string>;
 
   @Column({ type: 'jsonb', nullable: true })
-  descriptionLocalized?: Record<string, string>;
+  descriptionLocalized?: Record<string, unknown>;
 
   @Column({ nullable: true })
   imageUrl?: string;

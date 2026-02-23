@@ -27,6 +27,11 @@ import {
   parseLocalizedTextMap,
   resolveLocalizedText,
 } from '../localization.util';
+import {
+  normalizeStoredLocalizedEditorDocumentMap,
+  parseLocalizedEditorDocumentMap,
+  resolveLocalizedEditorDocument,
+} from './editor-content.util';
 
 type GiftWriteInput = {
   title?: unknown;
@@ -120,7 +125,9 @@ export class GiftsService {
       id: gift.id,
       createdAt: gift.createdAt,
       titleLocalized: gift.titleLocalized ?? {},
-      descriptionLocalized: gift.descriptionLocalized,
+      descriptionLocalized: normalizeStoredLocalizedEditorDocumentMap(
+        gift.descriptionLocalized,
+      ),
       imageUrl: gift.imageUrl,
       link: gift.link,
       claimable: gift.claimable,
@@ -156,13 +163,13 @@ export class GiftsService {
     );
     this.ensureNonEmptyLocalizedField(parsedTitleLocalized, 'titleLocalized');
 
-    const parsedDescriptionLocalized = parseLocalizedTextMap(
+    const parsedEditorDescriptionLocalized = parseLocalizedEditorDocumentMap(
       descriptionLocalized,
       'descriptionLocalized',
     );
     const gift = this.giftRepo.create();
     gift.titleLocalized = parsedTitleLocalized;
-    gift.descriptionLocalized = parsedDescriptionLocalized;
+    gift.descriptionLocalized = parsedEditorDescriptionLocalized;
     gift.imageUrl = imageUrl;
     gift.link = link;
     this.applyPriceWriteInput(gift, price);
@@ -229,10 +236,11 @@ export class GiftsService {
     }
 
     if (Object.prototype.hasOwnProperty.call(data, 'descriptionLocalized')) {
-      gift.descriptionLocalized = parseLocalizedTextMap(
+      const parsedEditorDescriptionMap = parseLocalizedEditorDocumentMap(
         descriptionLocalized,
         'descriptionLocalized',
       );
+      gift.descriptionLocalized = parsedEditorDescriptionMap;
     }
 
     this.ensureNonEmptyLocalizedField(gift.titleLocalized, 'titleLocalized');
@@ -327,16 +335,17 @@ export class GiftsService {
 
   toGiftResponse(gift: Gift, context: GiftContext): GiftResponseDto {
     const price = this.toPriceDto(gift, context);
+    const description = resolveLocalizedEditorDocument(
+      gift.descriptionLocalized,
+      context.locale,
+    );
 
     return {
       id: gift.id,
       createdAt: gift.createdAt,
       title:
         resolveLocalizedText(gift.titleLocalized, context.locale) ?? 'Untitled',
-      description: resolveLocalizedText(
-        gift.descriptionLocalized,
-        context.locale,
-      ),
+      description,
       imageUrl: gift.imageUrl,
       link: gift.link,
       claimable: gift.claimable,
