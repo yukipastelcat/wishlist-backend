@@ -141,7 +141,8 @@ export class YandexPostboxEmailAdapter implements EmailService {
       try {
         return fs.readFileSync(filePath, 'utf-8').trim();
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
+        const message =
+          error instanceof Error ? error.message : 'Unknown error';
         this.logger.warn(
           `Failed to read ${fileKey} at "${filePath}": ${message}`,
         );

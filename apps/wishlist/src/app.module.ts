@@ -22,6 +22,12 @@ function resolveDbPassword(): string | undefined {
   return (process.env.DB_PASSWORD ?? '').trim() || undefined;
 }
 
+function parseOptionalNumber(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 @Module({
   imports: [
     ScheduleModule.forRoot(),
@@ -34,6 +40,18 @@ function resolveDbPassword(): string | undefined {
       database: process.env.DB_NAME,
       entities: [Gift, GiftReservation, Tag],
       synchronize: true,
+      extra: {
+        keepAlive: true,
+        keepAliveInitialDelayMillis:
+          parseOptionalNumber(process.env.DB_KEEPALIVE_INITIAL_DELAY_MS) ??
+          10_000,
+        connectionTimeoutMillis:
+          parseOptionalNumber(process.env.DB_CONNECTION_TIMEOUT_MS) ?? 10_000,
+        query_timeout:
+          parseOptionalNumber(process.env.DB_QUERY_TIMEOUT_MS) ?? 20_000,
+        statement_timeout:
+          parseOptionalNumber(process.env.DB_STATEMENT_TIMEOUT_MS) ?? 20_000,
+      },
     }),
     GiftsModule,
     TagsModule,

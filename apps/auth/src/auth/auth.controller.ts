@@ -8,6 +8,7 @@ import {
   Res,
   UnauthorizedException,
 } from '@nestjs/common';
+import { extractBearerToken } from '@app/auth';
 import { AuthService } from './auth.service';
 import type { Request, Response } from 'express';
 import type { CookieOptions } from 'express';
@@ -25,6 +26,20 @@ export class AuthController {
   private readonly logger = new Logger(AuthController.name);
 
   constructor(private readonly authService: AuthService) {}
+
+  private readRefreshTokenCookie(req: Request): unknown {
+    const cookies = req.cookies as Record<string, unknown> | undefined;
+    return cookies?.refreshToken;
+  }
+
+  private getRefreshTokenFromCookies(req: Request): string {
+    const refreshToken = this.readRefreshTokenCookie(req);
+    if (typeof refreshToken !== 'string' || refreshToken.trim().length === 0) {
+      throw new UnauthorizedException('Missing refresh token');
+    }
+
+    return refreshToken;
+  }
 
   private getRefreshCookieOptions(): CookieOptions {
     const isProd = process.env.NODE_ENV === 'production';
@@ -66,7 +81,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const refreshTokenFromCookies = req.cookies?.refreshToken as string;
+    const refreshTokenFromCookies = this.getRefreshTokenFromCookies(req);
     try {
       this.logger.log('Handling token refresh');
       const { accessToken, refreshToken } = await this.authService.refreshToken(
@@ -86,8 +101,13 @@ export class AuthController {
   @Post('logout')
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     this.logger.log('Handling logout');
-    const refreshTokenFromCookies = req.cookies.refreshToken as string;
-    await this.authService.logout(refreshTokenFromCookies);
+    const refreshTokenFromCookies = this.readRefreshTokenCookie(req);
+    if (
+      typeof refreshTokenFromCookies === 'string' &&
+      refreshTokenFromCookies.trim()
+    ) {
+      await this.authService.logout(refreshTokenFromCookies);
+    }
     res.clearCookie('refreshToken', { path: '/auth/refresh' });
     return { status: 'ok' };
   }
@@ -95,8 +115,10 @@ export class AuthController {
   @Get('user')
   async getUser(@Req() req: Request) {
     this.logger.log('Handling current user request');
-    const authHeader = req.headers['authorization'];
-    const token = authHeader?.split(' ')[1] as string;
+    const token = extractBearerToken(req.headers['authorization']);
+    if (!token) {
+      throw new UnauthorizedException('Invalid authorization header');
+    }
 
     const user = await this.authService.getUser(token);
     return user;

@@ -36,7 +36,10 @@ export function parseLocalizedEditorDocumentMap(
       );
     }
 
-    const document = parseEditorDocumentInput(rawDocument, `${fieldName}.${rawLocale}`);
+    const document = parseEditorDocumentInput(
+      rawDocument,
+      `${fieldName}.${rawLocale}`,
+    );
     if (!hasContent(document)) {
       throw new BadRequestException(
         `${fieldName} values must contain at least one non-empty block`,
@@ -169,7 +172,9 @@ function parseEditorDocumentInput(
   };
 }
 
-function tryParseEditorDocumentInput(value: unknown): EditorJsDocument | undefined {
+function tryParseEditorDocumentInput(
+  value: unknown,
+): EditorJsDocument | undefined {
   try {
     return parseEditorDocumentInput(value, 'descriptionLocalized');
   } catch {
@@ -202,7 +207,10 @@ function hasContent(document: EditorJsDocument): boolean {
 
 function collectPlainText(value: unknown): string {
   if (typeof value === 'string') {
-    return value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    return value
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   if (typeof value === 'number' || typeof value === 'boolean') {

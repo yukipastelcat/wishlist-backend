@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { TokenPayload } from '@app/common/token-payload.type';
+import { extractBearerToken } from './bearer-token.util';
 import * as fs from 'fs';
 import { Request } from 'express';
 
@@ -20,11 +21,7 @@ export class JwtAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<Request>();
-    const authHeader = req.headers['authorization'];
-
-    if (!authHeader) throw new UnauthorizedException('No authorization header');
-
-    const token = authHeader.split(' ')[1];
+    const token = extractBearerToken(req.headers['authorization']);
     if (!token) throw new UnauthorizedException('Invalid authorization header');
 
     try {

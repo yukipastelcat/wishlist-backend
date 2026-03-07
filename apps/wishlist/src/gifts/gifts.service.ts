@@ -13,7 +13,7 @@ import {
   normalizePaginationLimit,
 } from '@app/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository, SelectQueryBuilder } from 'typeorm';
+import { In, QueryFailedError, Repository, SelectQueryBuilder } from 'typeorm';
 import { CurrencyService } from '../currency/currency.service';
 import { GiftReservation } from './gift-reservation.entity';
 import { Cron } from '@nestjs/schedule';
@@ -63,11 +63,14 @@ type GiftContext = {
 @Injectable()
 export class GiftsService {
   private readonly logger = new Logger(GiftsService.name);
+  private static readonly CREATE_RETRY_ATTEMPTS = 2;
+  private static readonly CREATE_RETRY_DELAY_MS = 200;
+  private static readonly READ_RETRY_ATTEMPTS = 3;
+  private static readonly READ_RETRY_DELAY_MS = 300;
   private static readonly RESERVATION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
   private static readonly RESERVATION_WARNING_WINDOW_MS =
     7 * 24 * 60 * 60 * 1000;
-  private static readonly RESERVATION_MAINTENANCE_INTERVAL_MS =
-    60 * 60 * 1000;
+  private static readonly RESERVATION_MAINTENANCE_INTERVAL_MS = 60 * 60 * 1000;
   private readonly frontendOrigin = (process.env.FE_ORIGIN ?? '').trim();
 
   constructor(
@@ -193,7 +196,7 @@ export class GiftsService {
       gift.tags = await this.tagRepo.findBy({ id: In(tagIds) });
     }
 
-    const saved = await this.giftRepo.save(gift);
+    const saved = await this.saveGiftWithRetry(gift);
     this.logger.log(
       `Gift created (giftId=${saved.id}, tagCount=${saved.tags?.length ?? 0})`,
     );
@@ -201,6 +204,72 @@ export class GiftsService {
     saved.reservations = [];
     saved.reservationId = null;
     return this.toGiftResponse(saved, context);
+  }
+
+  private async saveGiftWithRetry(gift: Gift): Promise<Gift> {
+    for (
+      let attempt = 1;
+      attempt <= GiftsService.CREATE_RETRY_ATTEMPTS;
+      attempt++
+    ) {
+      try {
+        return await this.giftRepo.save(gift);
+      } catch (error) {
+        const isLastAttempt = attempt === GiftsService.CREATE_RETRY_ATTEMPTS;
+        if (!this.isRetryableDbTimeout(error) || isLastAttempt) {
+          throw error;
+        }
+
+        this.logger.warn(
+          `Retrying gift create after transient DB timeout (attempt ${attempt}/${GiftsService.CREATE_RETRY_ATTEMPTS})`,
+        );
+        await this.delay(GiftsService.CREATE_RETRY_DELAY_MS);
+      }
+    }
+
+    throw new BadRequestException('Failed to create gift');
+  }
+
+  private async withReadRetry<T>(
+    operationName: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    for (
+      let attempt = 1;
+      attempt <= GiftsService.READ_RETRY_ATTEMPTS;
+      attempt++
+    ) {
+      try {
+        return await operation();
+      } catch (error) {
+        const isLastAttempt = attempt === GiftsService.READ_RETRY_ATTEMPTS;
+        if (!this.isRetryableDbTimeout(error) || isLastAttempt) {
+          throw error;
+        }
+
+        this.logger.warn(
+          `Retrying ${operationName} after transient DB timeout (attempt ${attempt}/${GiftsService.READ_RETRY_ATTEMPTS})`,
+        );
+        await this.delay(GiftsService.READ_RETRY_DELAY_MS);
+      }
+    }
+
+    throw new BadRequestException(`Failed to ${operationName}`);
+  }
+
+  private isRetryableDbTimeout(error: unknown): boolean {
+    if (!(error instanceof QueryFailedError)) {
+      return false;
+    }
+
+    const driverError = (error as QueryFailedError & { driverError?: unknown })
+      .driverError as { code?: string; syscall?: string } | undefined;
+
+    return driverError?.code === 'ETIMEDOUT' && driverError?.syscall === 'read';
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   async update(
@@ -542,10 +611,7 @@ export class GiftsService {
   }
 
   private async findGiftOrThrow(id: string): Promise<Gift> {
-    const gift = await this.giftRepo.findOne({
-      where: { id },
-      relations: ['reservations', 'tags'],
-    });
+    const [gift] = await this.hydrateGiftsInOrder([id]);
 
     if (!gift) throw new NotFoundException('Gift not found');
     return gift;
@@ -689,10 +755,22 @@ export class GiftsService {
   private async hydrateGiftsInOrder(ids: string[]): Promise<Gift[]> {
     if (ids.length === 0) return [];
 
-    const giftsWithRelations = await this.giftRepo.find({
-      where: { id: In(ids) },
-      relations: ['reservations', 'tags'],
-    });
+    const giftsWithRelations = await this.withReadRetry(
+      'hydrate gifts',
+      async () =>
+        this.giftRepo
+          .createQueryBuilder('gift')
+          .leftJoinAndSelect('gift.tags', 'tag')
+          // We only need the active reservation for list/view response flags.
+          .leftJoinAndMapMany(
+            'gift.reservations',
+            GiftReservation,
+            'reservation',
+            'reservation.id = gift.reservationId',
+          )
+          .where('gift.id IN (:...ids)', { ids })
+          .getMany(),
+    );
 
     const giftById = new Map(giftsWithRelations.map((gift) => [gift.id, gift]));
     return ids
@@ -787,7 +865,8 @@ export class GiftsService {
           html: warningMessage.html,
         });
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
+        const message =
+          error instanceof Error ? error.message : 'Unknown error';
         this.logger.error(
           `Failed to send reservation warning (reservationId=${reservation.id}): ${message}`,
         );
