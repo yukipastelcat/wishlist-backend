@@ -1,0 +1,159 @@
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
+import { createHash, createHmac } from 'crypto';
+import * as fs from 'fs';
+import type { EmailService, SendEmailInput } from './email.service';
+
+@Injectable()
+export class YandexPostboxEmailAdapter implements EmailService {
+  private readonly logger = new Logger(YandexPostboxEmailAdapter.name);
+  private readonly accessKeyId = this.readConfigValue(
+    'YA_POSTBOX_ACCESS_KEY_ID',
+    'YA_POSTBOX_ACCESS_KEY_ID_FILE',
+  );
+  private readonly secretAccessKey = this.readConfigValue(
+    'YA_POSTBOX_SECRET_ACCESS_KEY',
+    'YA_POSTBOX_SECRET_ACCESS_KEY_FILE',
+  );
+  private readonly fromAddress = this.readConfigValue('YA_POSTBOX_FROM_EMAIL');
+  private readonly endpoint = (
+    process.env.POSTBOX_ENDPOINT ?? 'https://postbox.cloud.yandex.net'
+  ).replace(/\/$/, '');
+  private readonly region = (
+    process.env.POSTBOX_REGION ?? 'ru-central1'
+  ).trim();
+  private readonly service = 'ses';
+
+  async sendEmail(input: SendEmailInput): Promise<void> {
+    if (
+      !this.accessKeyId ||
+      !this.secretAccessKey ||
+      !this.fromAddress ||
+      !input.to.trim()
+    ) {
+      this.logger.warn('Postbox email is not configured. Skipping email send.');
+      return;
+    }
+
+    const url = new URL('/v2/email/outbound-emails', this.endpoint);
+    const body = JSON.stringify({
+      FromEmailAddress: this.fromAddress,
+      Destination: {
+        ToAddresses: [input.to.trim()],
+      },
+      Content: {
+        Simple: {
+          Subject: {
+            Data: input.subject ?? 'Wishlist notification',
+            Charset: 'UTF-8',
+          },
+          Body: {
+            Text: {
+              Data: input.body,
+              Charset: 'UTF-8',
+            },
+            ...(input.html
+              ? {
+                  Html: {
+                    Data: input.html,
+                    Charset: 'UTF-8',
+                  },
+                }
+              : {}),
+          },
+        },
+      },
+    });
+
+    const payloadHash = this.sha256Hex(body);
+    const amzDate = this.formatAmzDate(new Date());
+    const dateStamp = amzDate.slice(0, 8);
+
+    const signedHeaders = 'content-type;host;x-amz-date';
+    const canonicalHeaders = [
+      'content-type:application/json',
+      `host:${url.host}`,
+      `x-amz-date:${amzDate}`,
+      '',
+    ].join('\n');
+
+    const canonicalRequest = [
+      'POST',
+      url.pathname,
+      '',
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash,
+    ].join('\n');
+
+    const credentialScope = `${dateStamp}/${this.region}/${this.service}/aws4_request`;
+    const stringToSign = [
+      'AWS4-HMAC-SHA256',
+      amzDate,
+      credentialScope,
+      this.sha256Hex(canonicalRequest),
+    ].join('\n');
+
+    const signature = this.signString(stringToSign, dateStamp);
+    const authorizationHeader =
+      `AWS4-HMAC-SHA256 Credential=${this.accessKeyId}/${credentialScope}, ` +
+      `SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-amz-date': amzDate,
+        authorization: authorizationHeader,
+      },
+      body,
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      this.logger.error(
+        `Postbox send failed (${response.status}): ${errorBody || 'No details'}`,
+      );
+      throw new InternalServerErrorException('Failed to send notification');
+    }
+  }
+
+  private signString(stringToSign: string, dateStamp: string): string {
+    const kDate = this.hmac(`AWS4${this.secretAccessKey}`, dateStamp);
+    const kRegion = this.hmac(kDate, this.region);
+    const kService = this.hmac(kRegion, this.service);
+    const kSigning = this.hmac(kService, 'aws4_request');
+    return createHmac('sha256', kSigning).update(stringToSign).digest('hex');
+  }
+
+  private hmac(key: string | Buffer, value: string): Buffer {
+    return createHmac('sha256', key).update(value).digest();
+  }
+
+  private sha256Hex(value: string): string {
+    return createHash('sha256').update(value).digest('hex');
+  }
+
+  private formatAmzDate(date: Date): string {
+    return date.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  }
+
+  private readConfigValue(valueKey: string, fileKey?: string): string {
+    const filePath = fileKey ? (process.env[fileKey] ?? '').trim() : '';
+    if (filePath) {
+      try {
+        return fs.readFileSync(filePath, 'utf-8').trim();
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        this.logger.warn(
+          `Failed to read ${fileKey} at "${filePath}": ${message}`,
+        );
+      }
+    }
+
+    return (process.env[valueKey] ?? '').trim();
+  }
+}

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -15,6 +16,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { CurrencyService } from '../currency/currency.service';
 import { GiftReservation } from './gift-reservation.entity';
+import { Cron } from '@nestjs/schedule';
 import {
   GiftEditResponseDto,
   GiftResponseDto,
@@ -32,6 +34,8 @@ import {
   parseLocalizedEditorDocumentMap,
   resolveLocalizedEditorDocument,
 } from './editor-content.util';
+import { EMAIL_SERVICE } from '../notifications/email.service';
+import type { EmailService } from '../notifications/email.service';
 
 type GiftWriteInput = {
   title?: unknown;
@@ -59,6 +63,12 @@ type GiftContext = {
 @Injectable()
 export class GiftsService {
   private readonly logger = new Logger(GiftsService.name);
+  private static readonly RESERVATION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+  private static readonly RESERVATION_WARNING_WINDOW_MS =
+    7 * 24 * 60 * 60 * 1000;
+  private static readonly RESERVATION_MAINTENANCE_INTERVAL_MS =
+    60 * 60 * 1000;
+  private readonly frontendOrigin = (process.env.FE_ORIGIN ?? '').trim();
 
   constructor(
     @InjectRepository(Gift) private giftRepo: Repository<Gift>,
@@ -66,6 +76,8 @@ export class GiftsService {
     private reservationRepo: Repository<GiftReservation>,
     @InjectRepository(Tag) private tagRepo: Repository<Tag>,
     private readonly currencyService: CurrencyService,
+    @Inject(EMAIL_SERVICE)
+    private readonly emailService: EmailService,
   ) {}
 
   async findAll(
@@ -185,8 +197,10 @@ export class GiftsService {
     this.logger.log(
       `Gift created (giftId=${saved.id}, tagCount=${saved.tags?.length ?? 0})`,
     );
-    const hydrated = await this.findGiftOrThrow(saved.id);
-    return this.toGiftResponse(hydrated, context);
+    saved.tags = gift.tags ?? saved.tags ?? [];
+    saved.reservations = [];
+    saved.reservationId = null;
+    return this.toGiftResponse(saved, context);
   }
 
   async update(
@@ -281,7 +295,7 @@ export class GiftsService {
     const insertResult = await this.reservationRepo.insert({
       giftId: gift.id,
       userEmail,
-      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
+      expiresAt: new Date(Date.now() + GiftsService.RESERVATION_TTL_MS),
     });
     const insertedId = insertResult.identifiers[0]?.id as string | undefined;
     if (!insertedId) {
@@ -331,6 +345,47 @@ export class GiftsService {
 
     const hydrated = await this.findGiftOrThrow(gift.id);
     return this.toGiftResponse(hydrated, context);
+  }
+
+  async prolongReservation(
+    giftId: string,
+    userEmail: string,
+    context: GiftContext,
+  ): Promise<GiftResponseDto> {
+    this.logger.debug(`Prolonging gift reservation (giftId=${giftId})`);
+    const gift = await this.giftRepo.findOne({
+      where: { id: giftId },
+      relations: ['reservations', 'tags'],
+    });
+    if (!gift) throw new NotFoundException('Gift not found');
+    if (!gift.reservationId) throw new ForbiddenException('Gift not reserved');
+
+    const reservation = await this.reservationRepo.findOne({
+      where: { id: gift.reservationId, userEmail },
+    });
+    if (!reservation) {
+      throw new ForbiddenException('Cannot prolong reservation: not owner');
+    }
+
+    const now = Date.now();
+    const extensionBase = Math.max(now, reservation.expiresAt.getTime());
+    reservation.expiresAt = new Date(
+      extensionBase + GiftsService.RESERVATION_TTL_MS,
+    );
+    await this.reservationRepo.save(reservation);
+    this.logger.log(
+      `Gift reservation prolonged (giftId=${giftId}, reservationId=${reservation.id})`,
+    );
+
+    const hydrated = await this.findGiftOrThrow(gift.id);
+    return this.toGiftResponse(hydrated, context);
+  }
+
+  @Cron('0 * * * *', { timeZone: 'UTC' })
+  async maintainReservations(): Promise<void> {
+    const now = new Date();
+    await this.removeExpiredReservations(now);
+    await this.sendReservationExpiryWarnings(now);
   }
 
   toGiftResponse(gift: Gift, context: GiftContext): GiftResponseDto {
@@ -643,5 +698,128 @@ export class GiftsService {
     return ids
       .map((id) => giftById.get(id))
       .filter((gift): gift is Gift => Boolean(gift));
+  }
+
+  private async removeExpiredReservations(now: Date): Promise<void> {
+    const expired = await this.giftRepo
+      .createQueryBuilder('gift')
+      .innerJoinAndSelect(
+        'gift.reservations',
+        'reservation',
+        'reservation.id = gift.reservationId',
+      )
+      .where('reservation.expiresAt <= :now', { now: now.toISOString() })
+      .getMany();
+
+    if (expired.length === 0) return;
+
+    const giftIds = expired.map((gift) => gift.id);
+    const reservationIds = expired
+      .map((gift) => gift.reservations[0]?.id)
+      .filter((value): value is string => Boolean(value));
+
+    if (giftIds.length > 0) {
+      await this.giftRepo
+        .createQueryBuilder()
+        .update(Gift)
+        .set({ reservationId: null })
+        .where('id IN (:...giftIds)', { giftIds })
+        .execute();
+    }
+
+    if (reservationIds.length > 0) {
+      await this.reservationRepo
+        .createQueryBuilder()
+        .delete()
+        .where('id IN (:...reservationIds)', { reservationIds })
+        .execute();
+    }
+
+    this.logger.log(
+      `Removed ${reservationIds.length} expired reservations (giftCount=${giftIds.length})`,
+    );
+  }
+
+  private async sendReservationExpiryWarnings(now: Date): Promise<void> {
+    if (!this.frontendOrigin) {
+      this.logger.warn(
+        'Skipping reservation expiry warnings: FE_ORIGIN is not configured',
+      );
+      return;
+    }
+
+    const warningThreshold = new Date(
+      now.getTime() + GiftsService.RESERVATION_WARNING_WINDOW_MS,
+    );
+    const warningThresholdLowerBound = new Date(
+      warningThreshold.getTime() -
+        GiftsService.RESERVATION_MAINTENANCE_INTERVAL_MS,
+    );
+    const expiringSoon = await this.giftRepo
+      .createQueryBuilder('gift')
+      .innerJoinAndSelect(
+        'gift.reservations',
+        'reservation',
+        'reservation.id = gift.reservationId',
+      )
+      .where('reservation.expiresAt > :now', { now: now.toISOString() })
+      .andWhere('reservation.expiresAt <= :warningThreshold', {
+        warningThreshold: warningThreshold.toISOString(),
+      })
+      .andWhere('reservation.expiresAt > :warningThresholdLowerBound', {
+        warningThresholdLowerBound: warningThresholdLowerBound.toISOString(),
+      })
+      .getMany();
+
+    for (const gift of expiringSoon) {
+      const reservation = gift.reservations[0];
+      if (!reservation) continue;
+
+      try {
+        const warningMessage = this.buildReservationWarningMessage(
+          gift.id,
+          gift.titleLocalized,
+        );
+        await this.emailService.sendEmail({
+          to: reservation.userEmail,
+          subject: 'Your gift reservation expires soon',
+          body: warningMessage.text,
+          html: warningMessage.html,
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        this.logger.error(
+          `Failed to send reservation warning (reservationId=${reservation.id}): ${message}`,
+        );
+      }
+    }
+  }
+
+  private buildReservationWarningMessage(
+    giftId: string,
+    titleLocalized?: Record<string, string>,
+  ): { text: string; html: string } {
+    const baseUrl = this.frontendOrigin.replace(/\/$/, '');
+    const encodedGiftId = encodeURIComponent(giftId);
+    const giftTitle = resolveLocalizedText(titleLocalized, 'en') ?? 'Gift';
+    const prolongUrl = `${baseUrl}/reservation-actions/prolong?giftId=${encodedGiftId}`;
+    const cancelUrl = `${baseUrl}/reservation-actions/cancel?giftId=${encodedGiftId}`;
+
+    const text = [
+      `Your reservation for "${giftTitle}" will be removed in 7 days.`,
+      '',
+      `Prolong reservation: ${prolongUrl}`,
+      `Cancel reservation: ${cancelUrl}`,
+    ].join('\n');
+
+    const html = [
+      `<p>Your reservation for "${giftTitle}" will be removed in 7 days.</p>`,
+      '<p>',
+      `<a href="${prolongUrl}" style="display:inline-block;padding:10px 16px;background:#0f766e;color:#ffffff;text-decoration:none;border-radius:6px;margin-right:8px;">Prolong reservation</a>`,
+      `<a href="${cancelUrl}" style="display:inline-block;padding:10px 16px;background:#dc2626;color:#ffffff;text-decoration:none;border-radius:6px;">Cancel reservation</a>`,
+      '</p>',
+    ].join('');
+
+    return { text, html };
   }
 }

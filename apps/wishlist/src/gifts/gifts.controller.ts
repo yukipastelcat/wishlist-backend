@@ -171,6 +171,25 @@ export class GiftsController {
     });
   }
 
+  @Post(':id/prolong-reservation')
+  @UseGuards(JwtAuthGuard)
+  prolongReservation(
+    @Param('id') id: string,
+    @Headers('x-currency') targetCurrency: string | undefined,
+    @Headers('x-locale') localeHeader: string | undefined,
+    @Headers('accept-language') acceptLanguage: string | undefined,
+    @Req() req: Request & { user: TokenPayload },
+  ) {
+    const isAdmin = this.isAdminUser(req.user);
+    return this.giftsService.prolongReservation(id, req.user.email, {
+      targetCurrency,
+      userCurrency: req.user.currency,
+      locale: resolveRequestLocale(localeHeader, acceptLanguage),
+      requesterEmail: req.user.email,
+      isAdmin,
+    });
+  }
+
   private isAdminUser(user?: TokenPayload): boolean {
     if (!user?.permissions) return false;
     return user.permissions.some(

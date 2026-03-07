@@ -7,11 +7,13 @@ import { Gift } from './gift.entity';
 import { GiftReservation } from './gift-reservation.entity';
 import { Tag } from './tag.entity';
 import { CurrencyModule } from '../currency/currency.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
     AuthzModule,
     CurrencyModule,
+    NotificationsModule,
     TypeOrmModule.forFeature([Gift, GiftReservation, Tag]),
   ],
   controllers: [GiftsController],
