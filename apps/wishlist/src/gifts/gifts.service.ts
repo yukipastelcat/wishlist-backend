@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -338,11 +339,60 @@ export class GiftsService {
     return this.toGiftResponse(hydrated, context);
   }
 
+  async getReservationStatus(id: string): Promise<{ isReserved: boolean }> {
+    const gift = await this.giftRepo.findOne({
+      where: { id },
+      select: ['id', 'reservationId'],
+    });
+    if (!gift) throw new NotFoundException('Gift not found');
+    return { isReserved: Boolean(gift.reservationId) };
+  }
+
   async remove(id: string, context: GiftContext): Promise<GiftResponseDto> {
     this.logger.debug(`Removing gift (giftId=${id})`);
-    const gift = await this.findGiftOrThrow(id);
+    const gift = await this.giftRepo.findOne({
+      where: { id },
+      relations: ['tags'],
+    });
+    if (!gift) throw new NotFoundException('Gift not found');
+
+    if (gift.reservationId) {
+      throw new ConflictException('GIFT_RESERVED');
+    }
+
     await this.giftRepo.remove(gift);
     this.logger.log(`Gift removed (giftId=${id})`);
+    return this.toGiftResponse(gift, context);
+  }
+
+  async forceRemove(
+    id: string,
+    context: GiftContext,
+  ): Promise<GiftResponseDto> {
+    this.logger.debug(`Force-removing gift (giftId=${id})`);
+    const gift = await this.giftRepo.findOne({
+      where: { id },
+      relations: ['reservations', 'tags'],
+    });
+    if (!gift) throw new NotFoundException('Gift not found');
+
+    if (gift.reservationId) {
+      const reservation = gift.reservations?.find(
+        (r) => r.id === gift.reservationId,
+      );
+      if (reservation) {
+        const { text, html } = this.buildGiftDeletedMessage(gift.titleLocalized);
+        await this.emailService.sendEmail({
+          to: reservation.userEmail,
+          body: text,
+          html,
+          subject: 'Your reservation has been cancelled',
+        });
+      }
+    }
+
+    await this.giftRepo.remove(gift);
+    this.logger.log(`Gift force-removed (giftId=${id})`);
     return this.toGiftResponse(gift, context);
   }
 
@@ -872,6 +922,15 @@ export class GiftsService {
         );
       }
     }
+  }
+
+  private buildGiftDeletedMessage(
+    titleLocalized?: Record<string, string>,
+  ): { text: string; html: string } {
+    const giftTitle = resolveLocalizedText(titleLocalized, 'en') ?? 'Gift';
+    const text = `Your reservation for "${giftTitle}" has been cancelled because the gift was removed by its owner.`;
+    const html = `<p>Your reservation for "${giftTitle}" has been cancelled because the gift was removed by its owner.</p>`;
+    return { text, html };
   }
 
   private buildReservationWarningMessage(

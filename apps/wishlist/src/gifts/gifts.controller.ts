@@ -113,6 +113,13 @@ export class GiftsController {
     });
   }
 
+  @Get(':id/reservation-status')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions({ resource: 'gift', scopes: ['delete'] })
+  getReservationStatus(@Param('id') id: string) {
+    return this.giftsService.getReservationStatus(id);
+  }
+
   @Delete(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions({ resource: 'gift', scopes: ['delete'] })
@@ -125,6 +132,26 @@ export class GiftsController {
   ) {
     const isAdmin = this.isAdminUser(req.user);
     return this.giftsService.remove(id, {
+      targetCurrency,
+      userCurrency: req.user.currency,
+      locale: resolveRequestLocale(localeHeader, acceptLanguage),
+      requesterEmail: req.user.email,
+      isAdmin,
+    });
+  }
+
+  @Delete(':id/force')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions({ resource: 'gift', scopes: ['delete'] })
+  forceRemove(
+    @Param('id') id: string,
+    @Headers('x-currency') targetCurrency: string | undefined,
+    @Headers('x-locale') localeHeader: string | undefined,
+    @Headers('accept-language') acceptLanguage: string | undefined,
+    @Req() req: Request & { user: TokenPayload },
+  ) {
+    const isAdmin = this.isAdminUser(req.user);
+    return this.giftsService.forceRemove(id, {
       targetCurrency,
       userCurrency: req.user.currency,
       locale: resolveRequestLocale(localeHeader, acceptLanguage),
